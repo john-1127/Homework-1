@@ -74,31 +74,76 @@ contract NFinTech is IERC721 {
         return owner;
     }
 
-    function setApprovalForAll(address operator, bool approved) external {
-        // TODO: please add your implementaiton here
+    function setApprovalForAll(address operator, bool approved) external override {
+        require(operator != address(0), "Operator is the zero address");
+        require(operator != msg.sender, "Cannot approve to caller");
+        _operatorApproval[msg.sender][operator] = approved;
+        emit ApprovalForAll(msg.sender, operator, approved);
     }
 
-    function isApprovedForAll(address owner, address operator) public view returns (bool) {
-        // TODO: please add your implementaiton here
+    function isApprovedForAll(address owner, address operator) public view override returns (bool) {
+        return _operatorApproval[owner][operator];
     }
 
-    function approve(address to, uint256 tokenId) external {
-        // TODO: please add your implementaiton here
+    function approve(address to, uint256 tokenId) external override {
+        address owner = ownerOf(tokenId);
+        require(msg.sender == owner || isApprovedForAll(owner, msg.sender), "Not authorized");
+        
+        _tokenApproval[tokenId] = to;
+        emit Approval(owner, to, tokenId);
     }
 
-    function getApproved(uint256 tokenId) public view returns (address operator) {
-        // TODO: please add your implementaiton here
+    function getApproved(uint256 tokenId) public view override returns (address operator) {
+        require(_owner[tokenId] != address(0), "Token does not exist");
+        return _tokenApproval[tokenId];
     }
 
-    function transferFrom(address from, address to, uint256 tokenId) public {
-        // TODO: please add your implementaiton here
+    function transferFrom(address from, address to, uint256 tokenId) public override {
+        require(to != address(0), "Transfer to the zero address");
+        require(from == ownerOf(tokenId), "From is not the owner");
+        require(msg.sender == from || getApproved(tokenId) == msg.sender || isApprovedForAll(from, msg.sender), "Not authorized");
+
+        _balances[from] -= 1;
+        _balances[to] += 1;
+        _owner[tokenId] = to;
+
+        emit Transfer(from, to, tokenId);
     }
 
     function safeTransferFrom(address from, address to, uint256 tokenId, bytes calldata data) public {
-        // TODO: please add your implementaiton here
+        _safeTransferFrom(from, to, tokenId, data);
     }
 
     function safeTransferFrom(address from, address to, uint256 tokenId) public {
-        // TODO: please add your implementaiton here
+        _safeTransferFrom(from, to, tokenId, "");
     }
+    function _safeTransferFrom(address from, address to, uint256 tokenId, bytes memory data) internal {
+        transferFrom(from, to, tokenId);
+        require(_checkOnERC721Received(from, to, tokenId, data), "Transfer to non ERC721Receiver implementer");
+    }
+    function _checkOnERC721Received(address from, address to, uint256 tokenId, bytes memory _data)
+    private returns (bool)
+    {
+        // Check if 'to' is a contract
+        uint256 size;
+        assembly {
+            size := extcodesize(to)
+        }
+        if (size > 0) {
+            try IERC721TokenReceiver(to).onERC721Received(msg.sender, from, tokenId, _data) returns (bytes4 retval) {
+                return retval == IERC721TokenReceiver.onERC721Received.selector;
+            } catch (bytes memory reason) {
+                if (reason.length == 0) {
+                    revert("Transfer to non ERC721Receiver implementer");
+                } else {
+                    assembly {
+                        revert(add(32, reason), mload(reason))
+                    }
+                }
+            }
+        } else {
+            return true;
+        }
+    }
+
 }
